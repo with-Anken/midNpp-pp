@@ -1,0 +1,157 @@
+def get_input(prompt, min_val, max_val):
+    while True:
+        try:
+            val = input(prompt).strip()
+            if not val:
+                print("Invalid input. Try again.")
+                continue
+            val = int(val)
+            if min_val <= val <= max_val:
+                return val
+            else:
+                print("Invalid input. Try again.")
+        except ValueError:
+            print("Invalid input. Try again.")
+
+def print_gantt(timeline):
+    if not timeline:
+        print("No processes to display.")
+        return
+
+    top_line = ""
+    proc_line = ""
+    times = [(0, timeline[0][1])]
+    
+    current_len = 0
+    for block in timeline:
+        pid, start, end = block
+        duration = end - start
+        
+        if pid == '+':
+            raw_top = f"{'+' * duration}|"
+            raw_proc = ""
+        else:
+            raw_top = f"{'-' * duration}|"
+            raw_proc = f"[{pid}]"
+            
+        width = max(len(raw_top), len(raw_proc))
+        
+        segment_top = raw_top.rjust(width)
+        segment_proc = raw_proc.rjust(width)
+        
+        top_line += segment_top
+        proc_line += segment_proc
+        current_len += width
+        times.append((current_len - 1, end))
+        
+    bottom_line_chars = [" "] * (current_len + 15)
+    for pos, val in times:
+        val_str = str(val)
+        for i, char in enumerate(val_str):
+            bottom_line_chars[pos + i] = char
+            
+    bottom_line = "".join(bottom_line_chars).rstrip()
+    
+    print(top_line)
+    print(proc_line)
+    print(bottom_line)
+
+def display_metrics(procs, timeline):
+    print("\nProcess Metrics:")
+    print(f"{'Process':<10} | {'AT':<5} | {'BT':<5} | {'PR':<5} | {'ET':<5} | {'TAT':<5} | {'WT':<5}")
+    print("-" * 55)
+    
+    total_tat = 0
+    total_wt = 0
+    total_bt = 0
+    
+    for p in sorted(procs, key=lambda x: int(x['id'][1:])):
+        tat = p['et'] - p['at']
+        wt = tat - p['bt']
+        total_tat += tat
+        total_wt += wt
+        total_bt += p['bt']
+        print(f"{p['id']:<10} | {p['at']:<5} | {p['bt']:<5} | {p['pr']:<5} | {p['et']:<5} | {tat:<5} | {wt:<5}")
+        
+    n = len(procs)
+    total_time = timeline[-1][2] if timeline else 1
+    cpu_utilization = (total_bt / total_time) * 100 if total_time > 0 else 0
+    
+    print(f"\nAverage Turnaround Time: {total_tat/n:.2f}")
+    print(f"Average Waiting Time: {total_wt/n:.2f}")
+    print(f"CPU Utilization: {cpu_utilization:.2f}%")
+    print("=" * 55)
+
+def preemptive_priority(processes):
+    procs = [dict(p) for p in processes]
+    for p in procs: p['rt'] = p['bt']
+    
+    n = len(procs)
+    completed = 0
+    current_time = 0
+    timeline = []
+    is_completed = [False] * n
+    
+    last_pid = None
+    block_start = 0
+    
+    while completed < n:
+        available = [i for i in range(n) if not is_completed[i] and procs[i]['at'] <= current_time]
+        
+        if not available:
+            if last_pid != '+':
+                if last_pid is not None:
+                    timeline.append((last_pid, block_start, current_time))
+                last_pid = '+'
+                block_start = current_time
+            current_time += 1
+            continue
+            
+        # Sorting: Priority (lowest number = highest priority), then Arrival Time, then ID
+        available.sort(key=lambda i: (procs[i]['pr'], procs[i]['at'], procs[i]['id']))
+        idx = available[0]
+        curr_pid = procs[idx]['id']
+        
+        if last_pid != curr_pid:
+            if last_pid is not None:
+                timeline.append((last_pid, block_start, current_time))
+            last_pid = curr_pid
+            block_start = current_time
+            
+        procs[idx]['rt'] -= 1
+        current_time += 1
+        
+        if procs[idx]['rt'] == 0:
+            is_completed[idx] = True
+            procs[idx]['et'] = current_time
+            completed += 1
+            
+    if last_pid is not None:
+        timeline.append((last_pid, block_start, current_time))
+        
+    return timeline, procs
+
+def main():
+    print("=== Preemptive Priority ===")
+    
+    num_processes = get_input("Enter number of processes: ", 3, 10)
+    processes = []
+    
+    for i in range(num_processes):
+        print(f"\n--- Process P{i+1} ---")
+        at = get_input("Enter Arrival Time: ", 0, 20)
+        bt = get_input("Enter Burst Time: ", 5, 15)
+        pr = get_input("Enter Priority (lower number = higher priority): ", 1, 10)
+        processes.append({'id': f'P{i+1}', 'at': at, 'bt': bt, 'pr': pr})
+        
+    print("\n\n" + "="*55)
+    print("           RESULTS FOR PREEMPTIVE PRIORITY")
+    print("="*55)
+    
+    timeline, procs = preemptive_priority(processes)
+    print("\nGantt Chart:")
+    print_gantt(timeline)
+    display_metrics(procs, timeline)
+
+if __name__ == "__main__":
+    main()
